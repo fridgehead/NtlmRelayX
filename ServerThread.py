@@ -1,3 +1,4 @@
+import traceback
 import SocketServer
 from threading import Thread
 from select import select
@@ -5,6 +6,7 @@ import socket
 import sys
 import time
 import base64
+import re
 
 class ThreadManager:
 	
@@ -13,12 +15,11 @@ class ThreadManager:
 		self.portCount = 0
 		self.threadPool = []
 
-	def addThread(self, httpclient, eptype="ews"):
+	def addThread(self, httpclient, domain, eptype="ews"):
 		# check for deads
 		self.threadPool = [x for x in self.threadPool if not x.dead]
-		print dir(httpclient.session.sock)
 		self.portCount += 1
-		sc = ServerThread(self.basePort + self.portCount, httpclient, eptype=eptype)
+		sc = ServerThread(self.basePort + self.portCount, httpclient, domain, eptype=eptype)
 		sc.start()
 		self.threadPool.append(sc)
 		
@@ -29,7 +30,7 @@ given NTLM authenticated socket
 
 """
 class ServerThread(Thread):
-	def __init__(self, port, HttpClient, eptype="ews"):
+	def __init__(self, port, HttpClient, domain, eptype="ews" ):
 		self.type = eptype
 		self.port = port
 		self.client = HttpClient
@@ -37,6 +38,7 @@ class ServerThread(Thread):
 		self.dead = False
 		self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		self.domain = domain
 
 	def doHeartBeat(self):
 		if self.type == "ews":
@@ -46,6 +48,7 @@ Host: mail.serverchoice.com
 Keep-Alive: 1000
 Content-Type: text/xml
 """
+			header = re.sub("\nhost:.*", "\nhost: " + self.domain, header, flags=re.IGNORECASE)
 
 			payload = """
 <?xml version="1.0" encoding="utf-8"?>
@@ -68,6 +71,8 @@ xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
 			data = self.clientSocket.recv(4096)
 			if len(data) == 0:
 				print "ERROR! heartbeat received nothing"
+			else:
+				print "Heartbeat response!"
 		else:
 			print "no support for mapi heartbeat yet"
 
@@ -85,7 +90,7 @@ xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
 			self.checkins += 1
 			if self.checkins >= 10:
 				print "do heartbeat"
-				self.doHeartBeat()
+				#self.doHeartBeat()
 				self.checkins = 0
 			for self.s in inputready:
 				if self.s == self.server:
@@ -99,10 +104,15 @@ xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
 				# receive data from the socket, pipe it to the other socket
 				try:
 					data = self.s.recv(104096)
+					# fix host headers, they'll most likely come in as "host: localhost:port"
+					# replace them with target servers name
+					rep = "localhost:" + str(self.port)
+					data = re.sub("\nhost:.*", "\nhost: " + self.domain, data, flags=re.IGNORECASE)
 					if self.s in self.channels.keys():
 						self.channels[self.s].send(data)
 				except:
 					# oh noes!	
+                                        traceback.print_exc()
 					print sys.exc_info()[0]
 
 				if len(data) == 0:

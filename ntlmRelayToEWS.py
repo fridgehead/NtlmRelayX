@@ -15,6 +15,7 @@ import cgi
 from threading import Thread
 from base64 import b64decode, b64encode
 import xml.etree.cElementTree as ET
+from urlparse import urlparse
 
 from impacket import version, smb3, smb
 
@@ -32,6 +33,7 @@ from ServerThread import ServerThread, ThreadManager
 templatesFolder = "SOAPRequestTemplates/"
 exchangeVersion = "Exchange2010_SP2"
 exchangeNamespace = {'m': 'http://schemas.microsoft.com/exchange/services/2006/messages', 't': 'http://schemas.microsoft.com/exchange/services/2006/types'}
+targetDomain = ""
 
 threadManager = ThreadManager(7000)
 	
@@ -184,7 +186,7 @@ class EWSAttack(Thread):
 			
 		elif self.config.ewsRequest == "proxyEWS":
 			print helper.color("[+] opening proxy port for EWS connection, have fun!")
-			threadManager.addThread(self.client)
+			threadManager.addThread(self.client, urlparse(args.target).netloc)
 		elif self.config.ewsRequest == "proxyMAPI":
 			print helper.color("[+] opening proxy port for MAPI connection, have fun!")
 			threadManager.addThread(self.client, eptype="MAPI")
@@ -321,6 +323,7 @@ if __name__ == '__main__':
 
 	if args.request == "proxyEWS" or args.request == "proxyMAPI":
 		# we're going to spawn threads for the connection and let another tool take over
+		print helper.color("[*] Proxying EWS connections for " + args.target)
 		
 		body = None
 		
